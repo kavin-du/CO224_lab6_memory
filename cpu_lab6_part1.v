@@ -38,7 +38,7 @@ module testbench;
         #6
         RESET = ~RESET;
         
-        #500 $finish;
+        #250 $finish;
     end
     always @(PC_t) begin
         PC_output = PC_t; // copy the updated pc value to new variable just for easyness
@@ -138,10 +138,13 @@ module cpu(PC, INSTRUCTION, CLK, RESET, READMEM, WRITEMEM, BUSYWAIT, aluResult, 
         source2 <= INSTRUCTION[7:0];  // 2 nd operand from the register file, or an immediate value (loadi).
         immediate <= INSTRUCTION[7:0]; // copy as immediate value    
         #1 // control signal generate
-        write <= INSTRUCTION[31]; // first bit of my opcode is write enable signal, IF busywait enable do not write anything
+        write <= INSTRUCTION[31]; // first bit of my opcode is write enable signal
         opcode <= INSTRUCTION[31:24];
         aluop <= INSTRUCTION[26:24]; // aluop is the last 3 bits of my opcode -- opcode[2:0]
         
+    end
+    always @(BUSYWAIT) begin        
+        write =(~BUSYWAIT & INSTRUCTION[31]);  // if busywait enabled, stop writing to register file
     end
     
     // instantiating submodules
