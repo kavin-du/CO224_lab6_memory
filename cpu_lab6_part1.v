@@ -38,7 +38,7 @@ module testbench;
         #6
         RESET = ~RESET;
         
-        #250 $finish;
+        #280 $finish;
     end
     always @(PC_t) begin
         PC_output = PC_t; // copy the updated pc value to new variable just for easyness
@@ -58,8 +58,8 @@ module testbench;
         {instr_mem[32'd16], instr_mem[32'd17], instr_mem[32'd18],instr_mem[32'd19]} <=32'b10000000000001000000000010001100; // loadi 4 0x8C 
         {instr_mem[32'd20], instr_mem[32'd21], instr_mem[32'd22],instr_mem[32'd23]} <=32'b01110000000000000000001100000100; // swd 3 4        
         {instr_mem[32'd24], instr_mem[32'd25], instr_mem[32'd26],instr_mem[32'd27]} <=32'b11100000000001010000000000000100; // lwd 5 4 
-        // {instr_mem[32'd28], instr_mem[32'd29], instr_mem[32'd30],instr_mem[32'd31]} <=32'b11000110000001000000000100001010; 
-        // {instr_mem[32'd32], instr_mem[32'd33], instr_mem[32'd34],instr_mem[32'd35]} <=32'b11001111000001010000000100001010; 
+        {instr_mem[32'd28], instr_mem[32'd29], instr_mem[32'd30],instr_mem[32'd31]} <=32'b10010001000001100000001000000011; // add 6 2 3
+        {instr_mem[32'd32], instr_mem[32'd33], instr_mem[32'd34],instr_mem[32'd35]} <=32'b10011001000001110000001100000100; // sub 7 3 4
         
     end
 endmodule
@@ -167,10 +167,12 @@ module cpu(PC, INSTRUCTION, CLK, RESET, READMEM, WRITEMEM, BUSYWAIT, aluResult, 
 
     always@(opcode) begin
         if((opcode == 8'b11100000) || (opcode == 8'b11101000)) begin  // lwd, lwi 
+            #2  // data memory access 2 units delay
             READMEM <= 1'b1;
             WRITEMEM <= 1'b0;
         end
         else if((opcode == 8'b01110000) || (opcode == 8'b01111000)) begin // swd, swi
+            #2  // data memory access 2 units delay
             WRITEMEM <= 1'b1;
             READMEM <= 1'b0;
         end
@@ -190,7 +192,7 @@ module cpu(PC, INSTRUCTION, CLK, RESET, READMEM, WRITEMEM, BUSYWAIT, aluResult, 
         registerIn <= registerInput;
 
     always @(posedge CLK) begin
-    	if(!RESET && !BUSYWAIT) begin // ---------------------------
+    	if(!RESET && !BUSYWAIT) begin
             if (opcode == 8'b00001100) #1 PC = branchResult; // new branch(pc value) for jump, if it is jump instruction no need to check the zero output
             else if(opcode == 8'b00000101) begin // branch value for beq
                 if(zerooutput == 1'b1) #1 PC = branchResult; 
@@ -361,7 +363,7 @@ module pcUpdater(pc, clk, reset, pcout);
     output reg[31:0] pcout;
 
     always @(pc) begin
-        #2 pcout = pc + 32'd4;
+        #1 pcout = pc + 32'd4; // pc update delay changed to #1 according to lab6
     end
 
     always @(reset) begin
