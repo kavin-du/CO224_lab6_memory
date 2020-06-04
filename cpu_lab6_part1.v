@@ -38,7 +38,7 @@ module testbench;
         #6
         RESET = ~RESET;
         
-        #280 $finish;
+        #300 $finish; // was 280
     end
     always @(PC_t) begin
         PC_output = PC_t; // copy the updated pc value to new variable just for easyness
@@ -52,14 +52,14 @@ module testbench;
     initial begin 
         // copying 32bit instruction to concatenated 1 byte four elements
         {instr_mem[32'd0], instr_mem[32'd1], instr_mem[32'd2],instr_mem[32'd3]} <= 32'b10000000000000010000000001100000; // loadi 1 0x60
-        {instr_mem[32'd4], instr_mem[32'd5], instr_mem[32'd6],instr_mem[32'd7]} <= 32'b01111000000000000000000100101000; // swi 1 0x28
-        {instr_mem[32'd8], instr_mem[32'd9], instr_mem[32'd10],instr_mem[32'd11]} <= 32'b11101000000000100000000000101000; // lwi 2 0x28      
-        {instr_mem[32'd12], instr_mem[32'd13], instr_mem[32'd14],instr_mem[32'd15]} <= 32'b10000000000000110000000010010001; // loadi 3 0x91
-        {instr_mem[32'd16], instr_mem[32'd17], instr_mem[32'd18],instr_mem[32'd19]} <=32'b10000000000001000000000010001100; // loadi 4 0x8C 
-        {instr_mem[32'd20], instr_mem[32'd21], instr_mem[32'd22],instr_mem[32'd23]} <=32'b01110000000000000000001100000100; // swd 3 4        
-        {instr_mem[32'd24], instr_mem[32'd25], instr_mem[32'd26],instr_mem[32'd27]} <=32'b11100000000001010000000000000100; // lwd 5 4 
-        {instr_mem[32'd28], instr_mem[32'd29], instr_mem[32'd30],instr_mem[32'd31]} <=32'b10010001000001100000001000000011; // add 6 2 3
-        {instr_mem[32'd32], instr_mem[32'd33], instr_mem[32'd34],instr_mem[32'd35]} <=32'b10011001000001110000001100000100; // sub 7 3 4
+        {instr_mem[32'd4], instr_mem[32'd5], instr_mem[32'd6],instr_mem[32'd7]} <= 32'b01111000000000000000000100101000; // swi 1 0x28      
+        {instr_mem[32'd8], instr_mem[32'd9], instr_mem[32'd10],instr_mem[32'd11]} <= 32'b01111000000000000000000100101110; // swi 1 0x2E     
+        {instr_mem[32'd12], instr_mem[32'd13], instr_mem[32'd14],instr_mem[32'd15]} <= 32'b11101000000000100000000000101000; // lwi 2 0x28   
+        {instr_mem[32'd16], instr_mem[32'd17], instr_mem[32'd18],instr_mem[32'd19]} <=32'b10000000000000110000000010010001; // loadi 3 0x91     
+        {instr_mem[32'd20], instr_mem[32'd21], instr_mem[32'd22],instr_mem[32'd23]} <=32'b10000000000001000000000010001100; // loadi 4 0x8C     
+        {instr_mem[32'd24], instr_mem[32'd25], instr_mem[32'd26],instr_mem[32'd27]} <=32'b01110000000000000000001100000100; // swd 3 4      
+        {instr_mem[32'd28], instr_mem[32'd29], instr_mem[32'd30],instr_mem[32'd31]} <=32'b11100000000001010000000000000100; // lwd 5 4      
+        {instr_mem[32'd32], instr_mem[32'd33], instr_mem[32'd34],instr_mem[32'd35]} <=32'b10010001000001100000001000000011; // add 6 2 3
         
     end
 endmodule
@@ -163,22 +163,26 @@ module cpu(PC, INSTRUCTION, CLK, RESET, READMEM, WRITEMEM, BUSYWAIT, aluResult, 
     branchValue mybranchValue(.PC(PC), .OFFSET(destination), .OUT(branchResult));
     
     
-    inputForRegisterIn my_inputForRegisterIn(.OPCODE(opcode), .ALURESULT(aluResult_wire), .MEMREADOUTPUT(memReadOutput), .OUTPUTVALUE(registerInput));
+    inputForRegisterIn my_inputForRegisterIn(.INSTRUCTION(INSTRUCTION), .OPCODE(opcode), .ALURESULT(aluResult_wire), .MEMREADOUTPUT(memReadOutput), .OUTPUTVALUE(registerInput));
 
-    always@(opcode) begin
-        if((opcode == 8'b11100000) || (opcode == 8'b11101000)) begin  // lwd, lwi 
+    always@(INSTRUCTION) begin
+        #1    // control signals are generating after 1 time unit
+        READMEM = 1'b0; // resetting readmem, writemem at every new instruction
+        WRITEMEM = 1'b0;
+        // comparing opcodes
+        if((INSTRUCTION[31:24] == 8'b11100000) || (INSTRUCTION[31:24] == 8'b11101000)) begin  // lwd, lwi 
             #2  // data memory access 2 units delay
-            READMEM <= 1'b1;
-            WRITEMEM <= 1'b0;
+            READMEM = 1'b1;
+            WRITEMEM = 1'b0;
         end
-        else if((opcode == 8'b01110000) || (opcode == 8'b01111000)) begin // swd, swi
+        else if((INSTRUCTION[31:24] == 8'b01110000) || (INSTRUCTION[31:24] == 8'b01111000)) begin // swd, swi
             #2  // data memory access 2 units delay
-            WRITEMEM <= 1'b1;
-            READMEM <= 1'b0;
+            WRITEMEM = 1'b1;
+            READMEM = 1'b0;
         end
         else begin
-            WRITEMEM <= 1'b0;
-            READMEM <= 1'b0;
+            WRITEMEM = 1'b0;
+            READMEM = 1'b0;
         end
     end
     always@(*) begin
@@ -214,13 +218,14 @@ endmodule
 
 // this mux decides which value is passed to register write port
 // either alu result or readed value from memory
-module inputForRegisterIn(OPCODE, ALURESULT, MEMREADOUTPUT, OUTPUTVALUE);
+module inputForRegisterIn(INSTRUCTION, OPCODE, ALURESULT, MEMREADOUTPUT, OUTPUTVALUE);
+    input[31:0] INSTRUCTION;
     input[7:0] OPCODE;
     input[7:0] ALURESULT;
     input[7:0] MEMREADOUTPUT;
     output reg[7:0] OUTPUTVALUE;
 
-    always @(OPCODE, MEMREADOUTPUT, ALURESULT) begin
+    always @(INSTRUCTION, MEMREADOUTPUT, ALURESULT) begin
         if((OPCODE[6:3] == 4'b1100) || (OPCODE[6:3] == 4'b1101)) begin // those 4 bits are unique to lwd, lwi
             OUTPUTVALUE = MEMREADOUTPUT;                               // so when lwd, lwi memory readed value will be passed
         end
@@ -270,15 +275,13 @@ always @(posedge clock)
 begin
     if(readaccess)
     begin
-        readdata = #40 memory_array[address]; // ------------- time removed
-        // readdata = memory_array[address];
+        readdata = #40 memory_array[address];
         busywait = 0;
 		readaccess = 0;
     end
     if(writeaccess)
 	begin
-        memory_array[address] = #40 writedata;   /// ------ time  removed
-        // memory_array[address] = writedata;
+        memory_array[address] = #40 writedata; 
         busywait = 0;
 		writeaccess = 0;
     end
