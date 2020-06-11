@@ -98,8 +98,8 @@ module testbench;
         {instr_mem[32'd20], instr_mem[32'd21], instr_mem[32'd22],instr_mem[32'd23]} <=32'b11101000000000110000000000101000; // lwi 3 0x28  -- read miss and dirty
         {instr_mem[32'd24], instr_mem[32'd25], instr_mem[32'd26],instr_mem[32'd27]} <=32'b11101000000001010000000010001000; // lwi 5 0x88     read miss not dirty
         {instr_mem[32'd28], instr_mem[32'd29], instr_mem[32'd30],instr_mem[32'd31]} <=32'b01111000000000000000000101111110; // swi 1 0x7E     write hit
-        {instr_mem[32'd32], instr_mem[32'd33], instr_mem[32'd34],instr_mem[32'd35]} <=32'b01111000000000000000001001111101; // swi 2 0x7D    write miss, tag match, dirty
-        {instr_mem[32'd36], instr_mem[32'd37], instr_mem[32'd38],instr_mem[32'd39]} <= 32'b01111000000000000000000101011101; // swi 1 0x5D    miss
+        {instr_mem[32'd32], instr_mem[32'd33], instr_mem[32'd34],instr_mem[32'd35]} <=32'b01111000000000000000001001111101; // swi 2 0x7D    write hit
+        {instr_mem[32'd36], instr_mem[32'd37], instr_mem[32'd38],instr_mem[32'd39]} <= 32'b01111000000000000000000101011101; // swi 1 0x5D   write miss, dirty
         {instr_mem[32'd40], instr_mem[32'd41], instr_mem[32'd42],instr_mem[32'd43]} <= 32'b10001000000000000000000000000001; // mov 0 1
         {instr_mem[32'd44], instr_mem[32'd45], instr_mem[32'd46],instr_mem[32'd47]} <= 32'b10000000000000110000000001011101; // loadi 3 0x5D 
         {instr_mem[32'd48], instr_mem[32'd49], instr_mem[32'd50],instr_mem[32'd51]} <= 32'b11100000000001000000000000000011; // lwd 4 3
@@ -370,7 +370,7 @@ module cache(
             #1
             if(!valid[index]) // very first write, not need to compare other things
                 writehit = 1;
-            else if(tag_array[index] == tag && dirty[index] == 0)  // comparing tag and dirty bits
+            else if(tag_array[index] == tag && valid[index])  // comparing tag and valid bit
                 writehit = 1;
             else
                 writehit = 0;
@@ -407,7 +407,7 @@ module cache(
             if(writehit)
             begin
                 valid[index] = 1;
-                dirty[index] = 1;
+                dirty[index] = 1'b1;
                 tag_array[index] = tag; 
 
                 case(offset) // write to correct block using offset
@@ -447,9 +447,6 @@ module cache(
                 else if(busywait && readaccess && !writeaccess && valid[index] && !readhit && dirty[index]) begin // read miss and dirty -- write old block to memory
                     next_state = MEM_WRITE_STATE;
                 end
-                else if(busywait && writeaccess && !readaccess && !writehit && tag_array[index]==tag && dirty[index]) begin // write miss, tag match but dirty -- write old block to memory
-                    next_state = MEM_WRITE_STATE;
-                end
                 else if(busywait && writeaccess && !readaccess && !writehit && tag_array[index] != tag && !dirty[index]) begin // write miss, tag mismatch and not dirty -- read new block from memory
                     next_state = MEM_READ_STATE;
                 end
@@ -471,10 +468,6 @@ module cache(
             MEM_WRITE_STATE:              
                 if(readaccess && !writeaccess && valid[index] && !readhit && !dirty[index]) // read miss and dirty 2nd step 
                     next_state = MEM_READ_STATE; // after writing old block, now fetch the new block from memory
-                else if(writeaccess && !readaccess && !writehit && tag_array[index] == tag && !dirty[index])  // write miss, tag match but dirty 2nd step
-                begin   
-                    next_state = IDLE_STATE;  // after writing old block to memory, the dirty bit will de assert, then by asynchronus logic, new data will written(writing was sensitive to dirty bit), so it is not need to handle by a seperate state
-                end
                 else if(writeaccess && !readaccess && !writehit && tag_array[index] != tag && !dirty[index]) // write miss -tag not match and dirty 2nd step
                     next_state = MEM_READ_STATE;  // after writing the old block, fetch new block from memory
 
@@ -517,11 +510,14 @@ module cache(
 
             WRITE_TO_CACHE_ON_MISS:
             begin
-                #1
-                data_block[index] = mem_readdata;
-                dirty[index] = 0;
-                tag_array[index] = tag; // updating tag
-                busywait = 1;
+                if(!writehit) // by asynchronous logic when there is write hit, this will prevent overwriting dirty bit and data again
+                begin
+                    #1
+                    data_block[index] = mem_readdata;
+                    dirty[index] = 0;
+                    tag_array[index] = tag; // updating tag
+                    busywait = 1;
+                end
             end
             
 
