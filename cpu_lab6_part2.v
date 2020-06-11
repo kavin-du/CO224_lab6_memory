@@ -393,7 +393,6 @@ module cache(
                     2'b10 : readdata = data_block[index][23:16];
                     2'b11 : readdata = data_block[index][31:24];
                 endcase
-                $display("read: %b", data_block[index]);
                 // busywait = 0;
             end
         end
@@ -417,18 +416,16 @@ module cache(
                     2'b10 : data_block[index][23:16] = writedata;
                     2'b11 : data_block[index][31:24] = writedata;
                 endcase
-                $display("write: %b", data_block[index]);
                 // busywait = 0; 
             end           
         end
     end
 
-    // when a hit occured resetting busywait at next positive edge
+    // when a hit occured, resetting busywait at next positive edge
 
     always @(posedge clock)
     begin
         if((readhit || writehit) && !mem_busywait)
-        // if(readhit || writehit)
             busywait = 0;
     end
 
@@ -446,28 +443,22 @@ module cache(
             IDLE_STATE: 
                 if(busywait && readaccess && !writeaccess && valid[index] && !readhit && !dirty[index]) begin // read miss but not dirty-- read from memory 
                     next_state = MEM_READ_STATE;
-                    $display("got 1"); // done
                 end
                 else if(busywait && readaccess && !writeaccess && valid[index] && !readhit && dirty[index]) begin // read miss and dirty -- write old block to memory
                     next_state = MEM_WRITE_STATE;
-                    $display("got 2");  // done
                 end
                 else if(busywait && writeaccess && !readaccess && !writehit && tag_array[index]==tag && dirty[index]) begin // write miss, tag match but dirty -- write old block to memory
                     next_state = MEM_WRITE_STATE;
-                    $display("got 3"); // done
                 end
                 else if(busywait && writeaccess && !readaccess && !writehit && tag_array[index] != tag && !dirty[index]) begin // write miss, tag mismatch and not dirty -- read new block from memory
                     next_state = MEM_READ_STATE;
-                    $display("got 4");
                 end
                 else if(busywait && writeaccess && !readaccess && !writehit && tag_array[index] != tag && dirty[index]) begin  // tag not match and dirty  -- write old block to memory
                     next_state = MEM_WRITE_STATE;
-                    $display("got 5");          // done
                 end
 
                 else begin
                     next_state = IDLE_STATE;
-                    $display("got 6",$time); // done
                 end
 
 
@@ -483,21 +474,14 @@ module cache(
                 else if(writeaccess && !readaccess && !writehit && tag_array[index] == tag && !dirty[index])  // write miss, tag match but dirty 2nd step
                 begin   
                     next_state = IDLE_STATE;  // after writing old block to memory, the dirty bit will de assert, then by asynchronus logic, new data will written(writing was sensitive to dirty bit), so it is not need to handle by a seperate state
-                    $display("x is here");
                 end
                 else if(writeaccess && !readaccess && !writehit && tag_array[index] != tag && !dirty[index]) // write miss -tag not match and dirty 2nd step
                     next_state = MEM_READ_STATE;  // after writing the old block, fetch new block from memory
 
             WRITE_TO_CACHE_ON_MISS:
                 next_state = IDLE_STATE;  // after each memory read, fetched data need to write to cache, then go to idle state
- 
-
         endcase
-
-
     end
-
-
 
     always @(*) 
     begin
@@ -509,7 +493,6 @@ module cache(
                 mem_address = 8'dx;
                 mem_writedata = 8'dx;
                 busywait = 0;
-                $display("--------IDLE_STATE");
             end
 
             MEM_READ_STATE:
@@ -520,7 +503,6 @@ module cache(
                 mem_writedata = 32'dx;
                 busywait = 1;
                 // dirty[index] = 0;
-                $display("--------MEM READ STATE, %d", $time);
             end
 
             MEM_WRITE_STATE:    
@@ -531,8 +513,6 @@ module cache(
                 mem_writedata = data_block[index]; 
                 dirty[index] = 0;
                 busywait = 1;
-                $display("mem write data: %b, %d", data_block[index], $time);
-                $display("--------MEM_WRITE_STATE");
             end
 
             WRITE_TO_CACHE_ON_MISS:
@@ -542,8 +522,6 @@ module cache(
                 dirty[index] = 0;
                 tag_array[index] = tag; // updating tag
                 busywait = 1;
-                $display("------WRITE_TO_CACHE_ON_MISS");
-                $display("write on miss: %b, %d", mem_readdata, $time);
             end
             
 
