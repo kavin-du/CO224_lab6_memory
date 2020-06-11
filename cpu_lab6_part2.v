@@ -77,7 +77,7 @@ module testbench;
         #6
         RESET = ~RESET;
         
-        #3500 $finish; 
+        #1400 $finish; 
     end
     always @(PC_t) begin
         PC_output = PC_t; // copy the updated pc value to new variable just for easyness
@@ -95,17 +95,16 @@ module testbench;
         {instr_mem[32'd8], instr_mem[32'd9], instr_mem[32'd10],instr_mem[32'd11]} <= 32'b10000000000000100000000001100001; // loadi 2 0x61  
         {instr_mem[32'd12], instr_mem[32'd13], instr_mem[32'd14],instr_mem[32'd15]} <= 32'b01111000000000000000001010001000; // swi 2 0x88  -- diff tag -- write miss
         {instr_mem[32'd16], instr_mem[32'd17], instr_mem[32'd18],instr_mem[32'd19]} <=32'b11101000000001000000000010001000; // lwi 4 0x88 -- read hit
-        {instr_mem[32'd20], instr_mem[32'd21], instr_mem[32'd22],instr_mem[32'd23]} <=32'b11101000000000110000000000101000; // lwi 3 0x28  -- read miss    20
-        {instr_mem[32'd24], instr_mem[32'd25], instr_mem[32'd26],instr_mem[32'd27]} <=32'b11101000000001010000000010001000; // lwi 5 0x88     
-        {instr_mem[32'd28], instr_mem[32'd29], instr_mem[32'd30],instr_mem[32'd31]} <=32'b01111000000000000000000101111110; // swi 1 0x7E     
-        {instr_mem[32'd32], instr_mem[32'd33], instr_mem[32'd34],instr_mem[32'd35]} <=32'b01111000000000000000001001111101; // swi 2 0x7D
-        {instr_mem[32'd36], instr_mem[32'd37], instr_mem[32'd38],instr_mem[32'd39]} <= 32'b01111000000000000000000101011101; // swi 1 0x5D
+        {instr_mem[32'd20], instr_mem[32'd21], instr_mem[32'd22],instr_mem[32'd23]} <=32'b11101000000000110000000000101000; // lwi 3 0x28  -- read miss and dirty
+        {instr_mem[32'd24], instr_mem[32'd25], instr_mem[32'd26],instr_mem[32'd27]} <=32'b11101000000001010000000010001000; // lwi 5 0x88     read miss not dirty
+        {instr_mem[32'd28], instr_mem[32'd29], instr_mem[32'd30],instr_mem[32'd31]} <=32'b01111000000000000000000101111110; // swi 1 0x7E     write hit
+        {instr_mem[32'd32], instr_mem[32'd33], instr_mem[32'd34],instr_mem[32'd35]} <=32'b01111000000000000000001001111101; // swi 2 0x7D    write miss, tag match, dirty
+        {instr_mem[32'd36], instr_mem[32'd37], instr_mem[32'd38],instr_mem[32'd39]} <= 32'b01111000000000000000000101011101; // swi 1 0x5D    miss
         {instr_mem[32'd40], instr_mem[32'd41], instr_mem[32'd42],instr_mem[32'd43]} <= 32'b10001000000000000000000000000001; // mov 0 1
-        {instr_mem[32'd44], instr_mem[32'd45], instr_mem[32'd46],instr_mem[32'd47]} <= 32'b10000000000000110000000001011101; // loadi 3 0x5D
+        {instr_mem[32'd44], instr_mem[32'd45], instr_mem[32'd46],instr_mem[32'd47]} <= 32'b10000000000000110000000001011101; // loadi 3 0x5D 
         {instr_mem[32'd48], instr_mem[32'd49], instr_mem[32'd50],instr_mem[32'd51]} <= 32'b11100000000001000000000000000011; // lwd 4 3
         {instr_mem[32'd52], instr_mem[32'd53], instr_mem[32'd54],instr_mem[32'd55]} <= 32'b01110000000000000000000000000010; // swd 0 2
 
-        // {instr_mem[32'd48], instr_mem[32'd49], instr_mem[32'd50],instr_mem[32'd51]} <= 32'b11100000000001000000000000000011; // lwd 4 3
 
        
     end
@@ -243,19 +242,21 @@ module cpu(PC, INSTRUCTION, CLK, RESET, READMEM, WRITEMEM, BUSYWAIT, aluResult, 
         registerIn <= registerInput;
 
     always @(posedge CLK) begin
+        #1
     	if(!RESET && !BUSYWAIT) begin
-            if (opcode == 8'b00001100) #1 PC = branchResult; // new branch(pc value) for jump, if it is jump instruction no need to check the zero output
+            if (opcode == 8'b00001100) PC = branchResult; // new branch(pc value) for jump, if it is jump instruction no need to check the zero output
             else if(opcode == 8'b00000101) begin // branch value for beq
-                if(zerooutput == 1'b1) #1 PC = branchResult; 
-                else #1 PC = pcUpdaterout;
+                if(zerooutput == 1'b1) PC = branchResult; 
+                else PC = pcUpdaterout;
             end
             else if(opcode == 8'b00011101) begin // branch value for bne
-                if(zerooutput == 1'b0) #1 PC = branchResult; 
-                else #1 PC = pcUpdaterout;
+                if(zerooutput == 1'b0) PC = branchResult; 
+                else PC = pcUpdaterout;
             end
-            else #1 PC = pcUpdaterout;   // every other instruction is not jump or beq
+            else PC = pcUpdaterout;   // every other instruction is not jump or beq
         end    
     end
+
     always @(RESET) begin
     	if(RESET)
         	#1 PC = pcUpdaterout;  // pc update(write to pc)       
@@ -423,9 +424,11 @@ module cache(
     end
 
     // when a hit occured resetting busywait at next positive edge
+
     always @(posedge clock)
     begin
-        if(readhit || writehit)
+        if((readhit || writehit) && !mem_busywait)
+        // if(readhit || writehit)
             busywait = 0;
     end
 
