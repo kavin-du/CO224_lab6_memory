@@ -1,3 +1,5 @@
+`timescale 1ns/100ps
+
 module testbench;
     reg[31:0] INSTRUCTION_t;                // 32'b10010 001 00000000 00000001 00000010;
     wire[31:0] PC_t;                         //     opcode    desti   source1   source2
@@ -353,7 +355,7 @@ module cache(
     begin
         if(readaccess) 
         begin
-            #1
+            #0.9
             if(valid[index] && tag_array[index] == tag)  // comparing tag and valid bit
                 readhit = 1;
             else
@@ -367,7 +369,7 @@ module cache(
     begin
         if(writeaccess)
         begin
-            #1
+            #0.9
             if(!valid[index]) // very first write, not need to compare other things
                 writehit = 1;
             else if(tag_array[index] == tag && valid[index])  // comparing tag and valid bit
@@ -545,8 +547,8 @@ module cache(
                 valid[i] = 0;
             
             busywait = 0;
-            readaccess = 0;
-            writeaccess = 0;
+            // readaccess = 0;
+            // writeaccess = 0;
         end
     end
 
