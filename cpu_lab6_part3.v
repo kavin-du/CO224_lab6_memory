@@ -110,20 +110,20 @@ module testbench;
         #6
         RESET = ~RESET;
         
-        #1400 $finish; 
+        #3000 $finish; 
     end
 
     always @(*)
         total_busywait = busywait_cache_t | busywait_instruction_cache_t;
 
-    // always @(posedge CLK) begin
-    //     // if(!total_busywait)
-    //         #2 INSTRUCTION_t = instruction_from_cache; // instruction cache/memory read
+    // always @(posedge CLK) 
+    // begin
+    //     #2 INSTRUCTION_t = instruction_from_cache; // instruction cache/memory read
     // end
 
-    always @(*) begin
-        // if(!total_busywait)
-            INSTRUCTION_t = instruction_from_cache; // instruction cache/memory read
+    always @(*) 
+    begin
+        INSTRUCTION_t = instruction_from_cache; // instruction cache/memory read
     end
 
 
@@ -175,8 +175,8 @@ module instruction_cache(
     always @(*) 
     begin 
         #1
-        if($signed(pc) < $signed(32'd0))
-            hit = 1'bx;
+        if($signed(pc) < $signed(32'd0)) // skipping the -4 value of pc 
+            hit = 1'bx; // neither hit or miss
         else if(tag_array[index] == tag && valid[index])  // comparing tag and checking valid bit
             hit = 1;
         else 
@@ -327,7 +327,11 @@ module instruction_memory(
         {memory_array[10'd15], memory_array[10'd14], memory_array[10'd13], memory_array[10'd12]} = 32'b10010001000001000000000100000010; // add 4 1 2
         {memory_array[10'd19], memory_array[10'd18], memory_array[10'd17], memory_array[10'd16]} = 32'b10011001000001010000000100000010; // sub 5 1 2    
         {memory_array[10'd23], memory_array[10'd22], memory_array[10'd21], memory_array[10'd20]} = 32'b10001000000001100000000000000001; // mov 6 1
-    
+        {memory_array[10'd27], memory_array[10'd26], memory_array[10'd25], memory_array[10'd24]} = 32'b00001100000000100000000000000000; // j 0x02
+        {memory_array[10'd31], memory_array[10'd30], memory_array[10'd29], memory_array[10'd28]} = 32'b10010001000001000000000100000010; // add 4 1 2
+        {memory_array[10'd35], memory_array[10'd34], memory_array[10'd33], memory_array[10'd32]} = 32'b10011001000001010000000100000010; // sub 5 1 2  
+        {memory_array[10'd39], memory_array[10'd38], memory_array[10'd37], memory_array[10'd36]} = 32'b10010001000000000000000100000010; // add 0 1 2
+        // {memory_array[10'd43], memory_array[10'd42], memory_array[10'd41], memory_array[10'd40]} = 32'
     end
 
     //Detecting an incoming memory access
