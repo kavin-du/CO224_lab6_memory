@@ -1,4 +1,4 @@
-//`timescale 1ns/100ps    =================================================================================
+`timescale 1ns/100ps   
 
 module testbench;
     reg[31:0] INSTRUCTION_t;                // 32'b10010 001 00000000 00000001 00000010;
@@ -110,20 +110,16 @@ module testbench;
         #6
         RESET = ~RESET;
         
-        #3000 $finish; 
+        #2200 $finish; 
     end
 
+    // if either data cache accessing busywait or instruction cache busywait enabled, then cpu should be stalled
     always @(*)
-        total_busywait = busywait_cache_t | busywait_instruction_cache_t;
-
-    // always @(posedge CLK) 
-    // begin
-    //     #2 INSTRUCTION_t = instruction_from_cache; // instruction cache/memory read
-    // end
+        total_busywait = busywait_cache_t | busywait_instruction_cache_t;  
 
     always @(*) 
     begin
-        INSTRUCTION_t = instruction_from_cache; // instruction cache/memory read
+        INSTRUCTION_t = instruction_from_cache; // instruction cache/intruction memory read
     end
 
 
@@ -162,44 +158,57 @@ module instruction_cache(
     reg[7:0] valid;
     reg[127:0] data_block[7:0];
 
+    reg[24:0] tag_from_cache;
+    reg valid_bit_from_cache;
+    reg[127:0] data_block_from_cache;
+
+
     always @(pc) 
     begin
         tag = pc[31:7];
         index = pc[6:4];
-        offset = pc[3:2];   // least 2 bits discarded        
+        offset = pc[3:2];   // least 2 bits discarded, incremented by 4        
     end
 
-    // always at read,write
-    // busywait asserted
+
+    always @(*) // extracting stored values
+    begin
+        tag_from_cache = tag_array[index];
+        valid_bit_from_cache = valid[index];
+        #1
+        data_block_from_cache = data_block[index]; // extracting data block parallel to tag comparison
+    end
+
+    always @(*)  // cache read hit
+    begin
+        if(hit)
+        begin
+            #1
+            case(offset)  // selecting correct data word
+                2'b00 : instruction = data_block_from_cache[31:0];
+                2'b01 : instruction = data_block_from_cache[63:32];
+                2'b10 : instruction = data_block_from_cache[95:64];
+                2'b11 : instruction = data_block_from_cache[127:96];
+            endcase 
+            hit = 1'bx; // if we do not make this x, the next instruction is sensitive to hit, so there will not be a #2 time unit delay
+        end
+    end
 
     always @(*) 
     begin 
         #1
         if($signed(pc) < $signed(32'd0)) // skipping the -4 value of pc 
             hit = 1'bx; // neither hit or miss
-        else if(tag_array[index] == tag && valid[index])  // comparing tag and checking valid bit
+        else if(tag_from_cache == tag && valid_bit_from_cache)  // comparing tag and checking valid bit
             hit = 1;
         else 
             hit = 0;    
     end
-    
-    always @(*)  // cache read hit
-    begin
-        if(hit)
-        begin
-            #1
-            case(offset)
-                2'b00 : instruction = data_block[index][31:0];
-                2'b01 : instruction = data_block[index][63:32];
-                2'b10 : instruction = data_block[index][95:64];
-                2'b11 : instruction = data_block[index][127:96];
-            endcase 
-        end
-    end
+
 
     always @(posedge clock)
     begin
-        if(hit && !mem_busywait)
+        if(hit && !mem_busywait) // in the event of hit and there is no instruction memory access, no need to stall the cpu
             busywait = 0;
     end
 
@@ -215,18 +224,16 @@ module instruction_cache(
         case(state)
             IDLE_STATE:
                 begin
-                    if(!hit)  // !valid[index] was here
+                    if(!hit) // if any kind of miss happens go to instruction memory read state
                         next_state = MEM_READ_STATE;
-                    // else if(!hit && tag_array[tag] != tag && valid[index])  // valid but tag not match
-                    //     next_state = MEM_READ_STATE;
                     else 
                         next_state = IDLE_STATE;
                 end
-            MEM_READ_STATE:
+            MEM_READ_STATE: // after instruction memory read, write to instruction cache
                 begin
                     next_state = WRITE_TO_CACHE_ON_MISS;
                 end
-            WRITE_TO_CACHE_ON_MISS:
+            WRITE_TO_CACHE_ON_MISS: // after write to cache, go to idle
                 begin
                     next_state = IDLE_STATE;
                 end
@@ -234,20 +241,20 @@ module instruction_cache(
     end
 
 
-
+    // state definition
     always @(*)
     begin
         case(state)
             IDLE_STATE :
                 begin
-                    mem_readaddress = 6'dx;
+                    mem_readaddress = 6'dx; // no read happens
                     mem_read = 0;
                     busywait = 0;
                 end
 
             MEM_READ_STATE :
                 begin
-                    mem_readaddress = {tag[2:0], index};
+                    mem_readaddress = {tag[2:0], index}; // read using 6 bit block address
                     mem_read = 1;
                     busywait = 1;
                 end
@@ -258,7 +265,7 @@ module instruction_cache(
                     begin
                         #1
                         data_block[index] = mem_readdata; // write the read data to cache
-                        tag_array[index] = tag;  // ?
+                        tag_array[index] = tag; 
                         busywait = 1;   
                         valid[index] = 1;
                     end
@@ -275,7 +282,7 @@ module instruction_cache(
     begin
         if(reset) 
             state = IDLE_STATE;
-        else if(!mem_busywait)
+        else if(!mem_busywait) // if there is no memory reading, go to next state
             state = next_state;
     end
 
@@ -288,7 +295,7 @@ module instruction_cache(
             for(i=0; i<8; i=i+1)
                 valid[i] = 0;
 
-            busywait = 0;  // is this necessary?
+            busywait = 0; 
         end
 
     end
@@ -331,7 +338,8 @@ module instruction_memory(
         {memory_array[10'd31], memory_array[10'd30], memory_array[10'd29], memory_array[10'd28]} = 32'b10010001000001000000000100000010; // add 4 1 2
         {memory_array[10'd35], memory_array[10'd34], memory_array[10'd33], memory_array[10'd32]} = 32'b10011001000001010000000100000010; // sub 5 1 2  
         {memory_array[10'd39], memory_array[10'd38], memory_array[10'd37], memory_array[10'd36]} = 32'b10010001000000000000000100000010; // add 0 1 2
-        // {memory_array[10'd43], memory_array[10'd42], memory_array[10'd41], memory_array[10'd40]} = 32'
+        {memory_array[10'd43], memory_array[10'd42], memory_array[10'd41], memory_array[10'd40]} = 32'b01111000000000000000001010001100; // swi 2 0x8C
+        {memory_array[10'd47], memory_array[10'd46], memory_array[10'd45], memory_array[10'd44]} = 32'b11101000000000000000000010001100; // lwi 0 0x8C
     end
 
     //Detecting an incoming memory access
